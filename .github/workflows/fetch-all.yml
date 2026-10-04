@@ -1,0 +1,95 @@
+name: Fetch All GameMaker pkgs
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all 15 versions
+        run: |
+          set -euo pipefail
+          dl() {
+            echo "--- downloading $1"
+            curl -fL --retry 5 --retry-delay 5 -o "GameMaker-$1.pkg" "https://gms.yoyogames.com/GameMaker-$1.pkg"
+            ls -l "GameMaker-$1.pkg"
+          }
+          dl 2024.8.0.169
+          dl 2024.06.2.162
+          dl 2024.6.1.160
+          dl 2024.6.0.157
+          dl 2024.4.1.152
+          dl 2024.4.0.137
+          dl 2024.2.0.132
+          dl 2023.11.1.129
+          dl 2023.11.0.121
+          dl 2023.8.2.108
+          dl 2023.8.2.106
+          dl 2023.8.1.102
+          dl 2023.8.0.98
+          dl 2023.6.0.92
+          dl 2023.6.0.89
+
+      - name: Verify all (XAR magic + size + SHA256)
+        run: |
+          set -euo pipefail
+          v() {
+            M=$(head -c 4 "GameMaker-$1.pkg" | xxd -p)
+            if [ "$M" != "78617221" ]; then echo "BAD-MAGIC $1: $M"; head -c 200 "GameMaker-$1.pkg"; exit 1; fi
+            S=$(stat -c%s "GameMaker-$1.pkg")
+            if [ "$S" -lt 104857600 ]; then echo "TOO-SMALL $1: $S"; exit 1; fi
+            A=$(sha256sum "GameMaker-$1.pkg" | awk '{print $1}')
+            if [ "$A" != "$2" ]; then echo "SHA-MISMATCH $1: $A"; exit 1; fi
+            echo "OK $1 ($S bytes)"
+          }
+          v 2024.8.0.169  bd71e86cc00b60df2c7b80ebaf5c21f67c73929ce6c4788f9c43a4f18b5712e6
+          v 2024.06.2.162 25ef676aaa397c84efeb3aed95f3ffbbdf9ee833fb7470fa2b0f4d8be148d483
+          v 2024.6.1.160  06f820dcfb2084f59c74be0e544a1fa638b74814e0a5b6a3d540751041ef1ad7
+          v 2024.6.0.157  19b6010a2cf795dcfbbae06442286c32755330d34024b69f1a67ec7be1bbd85d
+          v 2024.4.1.152  81431d54770a994a7f92c4d8a40012873463c9dcd85f868cc81f5be69be20cbc
+          v 2024.4.0.137  024315ca18abf46761dccff54c2840eef3d22799ec9c6ad71457a6056d700462
+          v 2024.2.0.132  73997b6a71b023cf02356883fc0229becf68259623d2c40ec54f39caaac1fd7c
+          v 2023.11.1.129 c5c95a8613826f3b333a46247ae2d33ca7b9b194b09826beb43b82e39fca155d
+          v 2023.11.0.121 7c7d0b2e835fd72a4d942285ef9ed30cc96d1fd14aceab5f1699b7c7fdf6682b
+          v 2023.8.2.108  84d61b0ad2c11189d1b9a7579045efa781b0a58c269379aa9748091721357544
+          v 2023.8.2.106  9e74682d819bde8ea7ee5d05c261cbca62a1a329fc6e3cd4e9f4526191fe7ac6
+          v 2023.8.1.102  78d5d20299eba5e2c75038ef575d5a7776c07c6d8d5a0c1fe7e9bb6b6ac0983a
+          v 2023.8.0.98   eb74ed30b8d6aa8b9d32b860b1e695f66db20b3ac2dc78bcb03c0984f1363d42
+          v 2023.6.0.92   9e8d9faee79bf83e7c61ce0dfaacc2890006ccfaa0e5d925fa10e13325be56c1
+          v 2023.6.0.89   12c3b5a037663e392f6592143bec0a0be7e3da14796fa6bb007b411b3ee54c4b
+          echo "ALL OK"
+
+      - name: Release all
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: gm-all
+          name: GameMaker 全版本合集 (A1502 / macOS 12 可用)
+          body: |
+            官方 macOS 安装包批量转存，A1502 (macOS 12 Monterey) 可用的全部 15 个版本。
+            来源: https://gms.yoyogames.com/GameMaker-<版本>.pkg
+            每个文件已通过 XAR 魔数 + 大小 + SHA256 三重校验。
+
+            版本与 SHA256:
+            - 2024.8.0.169  bd71e86cc00b60df2c7b80ebaf5c21f67c73929ce6c4788f9c43a4f18b5712e6
+            - 2024.06.2.162 25ef676aaa397c84efeb3aed95f3ffbbdf9ee833fb7470fa2b0f4d8be148d483
+            - 2024.6.1.160  06f820dcfb2084f59c74be0e544a1fa638b74814e0a5b6a3d540751041ef1ad7
+            - 2024.6.0.157  19b6010a2cf795dcfbbae06442286c32755330d34024b69f1a67ec7be1bbd85d
+            - 2024.4.1.152  81431d54770a994a7f92c4d8a40012873463c9dcd85f868cc81f5be69be20cbc
+            - 2024.4.0.137  024315ca18abf46761dccff54c2840eef3d22799ec9c6ad71457a6056d700462
+            - 2024.2.0.132  73997b6a71b023cf02356883fc0229becf68259623d2c40ec54f39caaac1fd7c
+            - 2023.11.1.129 c5c95a8613826f3b333a46247ae2d33ca7b9b194b09826beb43b82e39fca155d
+            - 2023.11.0.121 7c7d0b2e835fd72a4d942285ef9ed30cc96d1fd14aceab5f1699b7c7fdf6682b
+            - 2023.8.2.108  84d61b0ad2c11189d1b9a7579045efa781b0a58c269379aa9748091721357544
+            - 2023.8.2.106  9e74682d819bde8ea7ee5d05c261cbca62a1a329fc6e3cd4e9f4526191fe7ac6
+            - 2023.8.1.102  78d5d20299eba5e2c75038ef575d5a7776c07c6d8d5a0c1fe7e9bb6b6ac0983a
+            - 2023.8.0.98   eb74ed30b8d6aa8b9d32b860b1e695f66db20b3ac2dc78bcb03c0984f1363d42
+            - 2023.6.0.92   9e8d9faee79bf83e7c61ce0dfaacc2890006ccfaa0e5d925fa10e13325be56c1
+            - 2023.6.0.89   12c3b5a037663e392f6592143bec0a0be7e3da14796fa6bb007b411b3ee54c4b
+
+            ⚠️ 2024.11 起 GameMaker 要求 macOS 13+，A1502 只能用这里及更早的版本。
+          files: GameMaker-*.pkg
+          fail_on_unmatched_files: true
