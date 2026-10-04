@@ -1,1 +1,111 @@
+name: Download GameMaker macOS pkg
 
+# 用法:
+#   1. 在 GitHub 新建一个仓库(私有也行)
+#   2. 把本文件放到 .github/workflows/fetch-gamemaker.yml
+#   3. 打开仓库的 Actions 页面 -> 选 "Download GameMaker macOS pkg" -> Run workflow
+#   4. 填版本号(见下方默认值), 点绿色按钮
+#   5. 跑完在仓库的 Releases 页面拿到文件
+#   6. 若直连 GitHub 下载慢, 用镜像:
+#      https://ghproxy.net/https://github.com/<你的用户名>/<仓库名>/releases/download/gm-<版本>/GameMaker-<版本>.pkg
+#
+# 说明: GitHub Actions 的服务器在墙外, 能直连官方 CDN.
+#       本工作流只做"下载官方文件并转存", 不修改文件内容, 并做三重完整性校验.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'GameMaker 版本号 (A1502/macOS12 请勿超过 2024.8.1.171)'
+        required: true
+        default: '2024.8.1.171'
+      expected_sha256:
+        description: '期望的 SHA256 (留空则跳过校验)'
+        required: false
+        default: '1cba0f594bcfd292e9add8a7b6b8d4c8f3b84f9b6d98e3bbd9679e79cab07c7b'
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 显示参数
+        run: |
+          echo "版本: ${{ inputs.version }}"
+          echo "期望 SHA256: ${{ inputs.expected_sha256 }}"
+
+      - name: 下载官方 pkg
+        run: |
+          set -euo pipefail
+          V="${{ inputs.version }}"
+          URL="https://gms.yoyogames.com/GameMaker-${V}.pkg"
+          echo "下载: $URL"
+          curl -fL --retry 3 --retry-delay 5 -o "GameMaker-${V}.pkg" "$URL"
+          ls -l "GameMaker-${V}.pkg"
+
+      - name: 校验 1 - 文件类型必须是 XAR (pkg)
+        run: |
+          set -euo pipefail
+          V="${{ inputs.version }}"
+          F="GameMaker-${V}.pkg"
+          MAGIC=$(head -c 4 "$F" | xxd -p)
+          echo "文件头: $MAGIC"
+          if [ "$MAGIC" != "78617221" ]; then
+            echo "::error::下载到的不是 pkg (XAR 魔数应为 78617221 = 'xar!'), 实际为 $MAGIC"
+            echo "很可能是被墙页/错误页替换了, 内容前 200 字节:"
+            head -c 200 "$F"
+            exit 1
+          fi
+          echo "✅ 是合法的 XAR/pkg"
+
+      - name: 校验 2 - 大小必须大于 100MB
+        run: |
+          set -euo pipefail
+          V="${{ inputs.version }}"
+          F="GameMaker-${V}.pkg"
+          SZ=$(stat -c%s "$F")
+          echo "大小: $SZ 字节 ($((SZ/1048576)) MB)"
+          if [ "$SZ" -lt 104857600 ]; then
+            echo "::error::文件太小 ($SZ 字节), 真实安装包应 >100MB"
+            exit 1
+          fi
+          echo "✅ 大小合理"
+
+      - name: 校验 3 - SHA256
+        if: inputs.expected_sha256 != ''
+        run: |
+          set -euo pipefail
+          V="${{ inputs.version }}"
+          F="GameMaker-${V}.pkg"
+          ACTUAL=$(sha256sum "$F" | awk '{print $1}')
+          EXPECT="${{ inputs.expected_sha256 }}"
+          echo "实际: $ACTUAL"
+          echo "期望: $EXPECT"
+          if [ "$ACTUAL" != "$EXPECT" ]; then
+            echo "::error::SHA256 不匹配! 下载可能不完整或已被篡改"
+            exit 1
+          fi
+          echo "✅ SHA256 匹配"
+
+      - name: 输出 SHA256 (便于你本地复核)
+        run: |
+          V="${{ inputs.version }}"
+          echo "### GameMaker ${V}" >> $GITHUB_STEP_SUMMARY
+          sha256sum "GameMaker-${V}.pkg" >> $GITHUB_STEP_SUMMARY
+          ls -l "GameMaker-${V}.pkg" >> $GITHUB_STEP_SUMMARY
+
+      - name: 发布为 Release Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: gm-${{ inputs.version }}
+          name: GameMaker ${{ inputs.version }} (macOS)
+          body: |
+            官方 macOS 安装包转存。
+            来源: https://gms.yoyogames.com/GameMaker-${{ inputs.version }}.pkg
+
+            ⚠️ A1502 (macOS 12 Monterey) 只能用 2024.8.1.171 及更早版本。
+            2024.11 起 GameMaker 要求 macOS 13+。
+          files: GameMaker-${{ inputs.version }}.pkg
+          fail_on_unmatched_files: true
